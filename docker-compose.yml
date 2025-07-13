@@ -1,0 +1,71 @@
+
+services:
+
+  eventstore.db:
+    image: eventstore/eventstore:23.10.0-jammy
+    container_name: esdb-node
+    environment:
+      - EVENTSTORE_INSECURE=true
+      - EVENTSTORE_CLUSTER_SIZE=1
+      - EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=true
+    ports:
+      - "2113:2113"
+    volumes:
+      - eventstore-data:/var/lib/eventstore
+      - eventstore-logs:/var/log/eventstore
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2113/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  postgres:
+    image: postgres:13-alpine
+    container_name: postgres-read-model
+    environment:
+      - POSTGRES_USER=readmodel_user
+      - POSTGRES_PASSWORD=readmodel_pass
+      - POSTGRES_DB=accounts_read_model
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U readmodel_user -d accounts_read_model"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  api:
+    build: ./api     
+    image: bank-api:latest
+    container_name: bank-api
+    ports:
+      - "3001:3001"
+    environment:
+      - PG_HOST=postgres
+      - PG_USER=readmodel_user
+      - PG_PASSWORD=readmodel_pass
+      - PG_DATABASE=accounts_read_model
+      - PG_PORT=5432
+    depends_on:
+      eventstore.db:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  ui:
+    build: ./ui       
+    image: bank-ui:latest
+    container_name: bank-ui
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+volumes:
+  eventstore-data:
+  eventstore-logs:
+  postgres-data:
