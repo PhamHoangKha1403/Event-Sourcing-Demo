@@ -1,13 +1,12 @@
-
-import { jsonEvent } from "@eventstore/db-client";
+import { jsonEvent, NO_STREAM } from "@eventstore/db-client";
 import client from "../services/eventStoreClient.js";
-import { projectEvent } from "../readModels/accountsProjector.js";
 
 export default class AccountAggregate {
     constructor(accountId) {
         this.id = accountId;
         this.streamName = `bankAccount-${this.id}`;
         this.state = { balance: 0, owner: null, status: 'INITIAL' };
+        this.version = NO_STREAM; // For optimistic concurrency control
         this.uncommittedEvents = [];
     }
 
@@ -15,7 +14,9 @@ export default class AccountAggregate {
         try {
             const events = client.readStream(this.streamName);
             for await (const { event } of events) {
+                if (!event) continue;
                 this.applyEvent(event);
+                this.version = event.revision; // Track the latest revision
             }
         } catch (error) {
             if (error.type !== 'stream-not-found') throw error;
@@ -64,14 +65,14 @@ export default class AccountAggregate {
     async save() {
         if (this.uncommittedEvents.length === 0) return;
 
-        await client.appendToStream(this.streamName, this.uncommittedEvents);
-        console.log(`Events saved to stream: ${this.streamName}`);
+        console.log(`Saving events to stream: ${this.streamName}`);
 
-        for (const jsonEv of this.uncommittedEvents) {
-         
-            await projectEvent(jsonEv);
-        }
+        // Save events with optimistic concurrency control
+        const result = await client.appendToStream(this.streamName, this.uncommittedEvents, {
+            expectedRevision: this.version,
+        });
 
+        this.version = result.nextExpectedRevision;
         this.uncommittedEvents = [];
       }
 }

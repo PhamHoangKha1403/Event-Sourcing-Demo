@@ -8,6 +8,7 @@ const router = express.Router();
 router.post('/accounts', async (req, res) => {
     try {
         const { owner, initialBalance } = req.body;
+        console.log("[AccountCreated] New owner: " + owner);
         if (!owner) return res.status(400).json({ message: "Owner name is required." });
         
         const accountId = uuidv4();
@@ -24,6 +25,7 @@ router.post('/accounts', async (req, res) => {
 router.post('/accounts/:id/deposit', async (req, res) => {
     try {
         const { amount } = req.body;
+        console.log("[MoneyDeposited] $" + amount + " from " + req.params.id);
         const aggregate = new AccountAggregate(req.params.id);
         await aggregate.load();
         aggregate.depositMoney(amount);
@@ -37,6 +39,7 @@ router.post('/accounts/:id/deposit', async (req, res) => {
 router.post('/accounts/:id/withdraw', async (req, res) => {
     try {
         const { amount } = req.body;
+        console.log("[MoneyWithdrawn] $" + amount + " from " + req.params.id);
         const aggregate = new AccountAggregate(req.params.id);
         await aggregate.load();
         aggregate.withdrawMoney(amount);
